@@ -1,10 +1,9 @@
 name: tests
+
 on:
-  workflow_dispatch:
-# on:
-#   push:
-#     branches: [master, renovate/**]
-#   pull_request:
+  push:
+    branches: [ master, renovate/** ]
+  pull_request:
 
 jobs:
   test:
@@ -14,40 +13,48 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22]
+        node-version: [ 20, 22 ]
     steps:
       - name: Checkout Source code
         uses: actions/checkout@v4
+
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+
       - name: Init docker
         run: docker compose up -d
       - name: Sleep for 10s
         uses: juliangruber/sleep-action@v2
         with:
           time: 10s
+
       - name: Enable corepack
         run: |
           corepack enable
           corepack prepare yarn@stable --activate
+
       # Yarn dependencies cannot be cached until yarn is installed
       # WORKAROUND: https://github.com/actions/setup-node/issues/531
       - name: Extract cached dependencies
         uses: actions/setup-node@v4
         with:
           cache: yarn
+
       - name: Install
         run: yarn
+
       - name: Configure
         run: |
           cp src/config.ts.example src/config.ts
           cp src/mikro-orm.config.ts.example src/mikro-orm.config.ts
           npx mikro-orm migration:up
+
       - name: Test
         run: |
           yarn test
+
       - name: E2E tests
         run: |
           yarn start &
@@ -55,5 +62,6 @@ jobs:
           cd e2e
           APIURL=http://localhost:3000/api ./run-api-tests.sh
           exit 0
+
       - name: Teardown docker
         run: docker compose down
