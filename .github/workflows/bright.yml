@@ -1,0 +1,82 @@
+name: Security Tests
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  checks: write
+  contents: read
+
+jobs:
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Init docker
+        run: docker compose up -d
+
+      - name: Wait for MySQL
+        run: |
+          for i in {1..10}; do
+            nc -z localhost 3307 && echo "MySQL is up" && exit 0
+            echo "Waiting for MySQL..."
+            sleep 5
+          done
+          echo "MySQL did not start in time" && exit 1
+
+      - name: Enable corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
+      - name: Extract cached dependencies
+        uses: actions/setup-node@v4
+        with:
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn
+
+      - name: Install SecTester dependencies
+        run: npm i --save-dev @sectester/core @sectester/repeater @sectester/scan @sectester/runner
+
+      - name: Configure application
+        run: |
+          cp src/config.ts.example src/config.ts
+          cp src/mikro-orm.config.ts.example src/mikro-orm.config.ts
+          npx mikro-orm migration:up
+
+      - name: Start application
+        run: |
+          yarn start &
+          for i in {1..10}; do
+            nc -z localhost 3000 && echo "Application is up" && exit 0
+            echo "Waiting for application..."
+            sleep 5
+          done
+          echo "Application did not start in time" && exit 1
+
+      - name: Run Security Tests
+        env:
+          BRIGHT_HOSTNAME: ${{ vars.BRIGHT_HOSTNAME }}
+          BRIGHT_PROJECT_ID: ${{ vars.BRIGHT_PROJECT_ID }}
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRIGHT_TARGET_URL: http://127.0.0.1:3000
+        run: |
+          node --experimental-transform-types --experimental-strip-types --experimental-detect-module \
+          --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning \
+          --test-force-exit --test .brightsec/tests/*.test.ts --test-concurrency=4
+
+      - name: Teardown docker
+        run: docker compose down
