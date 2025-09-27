@@ -1,0 +1,46 @@
+import { test, before, after } from 'node:test';
+import { SecRunner } from '@sectester/runner';
+import { AttackParamLocation, HttpMethod } from '@sectester/scan';
+
+const timeout = 40 * 60 * 1000;
+const baseUrl = process.env.BRIGHT_TARGET_URL!;
+
+let runner!: SecRunner;
+
+before(async () => {
+  runner = new SecRunner({
+    hostname: process.env.BRIGHT_HOSTNAME!,
+    projectId: process.env.BRIGHT_PROJECT_ID!
+  });
+
+  await runner.init();
+});
+
+after(() => runner.clear());
+
+test('PUT /user', { signal: AbortSignal.timeout(timeout) }, async () => {
+  await runner
+    .createScan({
+      tests: ['bopla', 'jwt', 'xss', 'sqli'],
+      attackParamLocations: [AttackParamLocation.BODY, AttackParamLocation.HEADER],
+      starMetadata: { databases: ['MySQL'] }
+    })
+    .setFailFast(false)
+    .timeout(timeout)
+    .run({
+      method: HttpMethod.PUT,
+      url: `${baseUrl}/user`,
+      body: {
+        user: {
+          bio: 'Updated bio',
+          email: 'newemail@example.com',
+          image: 'http://example.com/image.png',
+          username: 'newusername'
+        }
+      },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer <token>'
+      }
+    });
+});
