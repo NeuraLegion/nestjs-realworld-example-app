@@ -21,10 +21,16 @@ jobs:
         with:
           node-version: 18.x
 
+      - name: Yarn version before corepack
+        run: yarn --version
+
       - name: Enable corepack
         run: |
           corepack enable
           corepack prepare yarn@stable --activate
+
+      - name: Yarn version after corepack
+        run: yarn --version
 
       - name: Install application dependencies
         run: |
